@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software or its figures, please cite it as below."
+title: "Pneumonia Detection from Chest X-rays: Explainable, Calibrated and Uncertainty-Aware Deep Learning"
+authors:
+  - family-names: Naqvi
+    given-names: Husain
+version: 1.0.0
+date-released: 2026-11-07
+repository-code: "https://github.com/Engr-HusainNaqvi/Pneumonia-Xray-AI"
+url: "https://engr-husainnaqvi.github.io/Pneumonia-Xray-AI/"
+keywords:
+  - medical imaging
+  - chest x-ray
+  - pneumonia
+  - convolutional neural networks
+  - transfer learning
+  - grad-cam
+  - uncertainty quantification
+  - calibration

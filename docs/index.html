@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pneumonia X-ray AI · explainable, calibrated, uncertainty-aware</title>
+<meta name="description" content="Pneumonia detection from paediatric chest X-rays: a CNN from scratch vs. ImageNet transfer learning, with Grad-CAM, integrated gradients, Monte-Carlo-dropout uncertainty, temperature scaling, decision curves and paired statistics.">
+<meta property="og:title" content="Pneumonia detection from chest X-rays: explainable, calibrated and uncertainty-aware">
+<meta property="og:image" content="figures/09_gradcam_gallery.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}]})"></script>
+<style>
+:root{
+  --bg:#f9f9f7; --surface:#fcfcfb; --card:#ffffff; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --line:#e1e0d9; --cnn:#1baf7a; --res:#b03fa6; --c1:#2a78d6; --c2:#eb6834; --accent:#2a78d6;
+  --warn-bg:#fdf3e1; --warn-ink:#6b4500;
+  --shadow:0 1px 2px rgba(11,11,11,.06),0 8px 24px rgba(11,11,11,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d0d0d; --surface:#1a1a19; --card:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --line:#2c2c2a; --cnn:#199e70; --res:#d55181; --accent:#3987e5; --warn-bg:#2b2416; --warn-ink:#f2c46d; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d0d0d; --surface:#1a1a19; --card:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --line:#2c2c2a; --cnn:#199e70; --res:#d55181; --accent:#3987e5; --warn-bg:#2b2416; --warn-ink:#f2c46d; --shadow:none;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;gap:18px;align-items:center;height:52px;overflow-x:auto;white-space:nowrap;font-size:14px}
+nav b{margin-right:auto;color:var(--ink)}
+nav a{color:var(--ink2)}
+header{padding:56px 0 28px}
+.kicker{color:var(--muted);font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+h1{font-size:clamp(30px,5vw,48px);line-height:1.12;margin:10px 0 14px;letter-spacing:-.02em}
+h1 .c{color:var(--cnn)} h1 .r{color:var(--res)}
+.lede{font-size:clamp(17px,2.2vw,20px);color:var(--ink2);max-width:800px;margin:0}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 8px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;font-weight:600;font-size:15px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.btn.primary{background:var(--res);border-color:var(--res);color:#fff}
+.btn:hover{text-decoration:none;transform:translateY(-1px)}
+.author{color:var(--muted);font-size:14px;margin-top:10px}
+.warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:12px 16px;margin:18px 0 0;font-size:15px}
+.hero{margin:26px 0 8px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow)}
+.hero img{display:block;width:100%;height:auto}
+section{padding:40px 0;border-top:1px solid var(--line)}
+h2{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--ink2);margin:0 0 22px;max-width:780px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:4px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.stat .v{font-size:30px;font-weight:700;letter-spacing:-.02em}
+.stat .l{color:var(--ink2);font-size:14px}
+.findings{counter-reset:f;list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.findings li{counter-increment:f;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px 14px 56px;position:relative}
+.findings li::before{content:counter(f);position:absolute;left:16px;top:14px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--bg);font-weight:700;font-size:14px;display:grid;place-items:center}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:15px}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{color:var(--ink2);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+.cnn{color:var(--cnn);font-weight:700} .res{color:var(--res);font-weight:700}
+figure{margin:0 0 26px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+figure img{display:block;width:100%;height:auto;background:#fcfcfb}
+figcaption{padding:12px 16px;color:var(--ink2);font-size:14.5px;border-top:1px solid var(--line)}
+figcaption b{color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.math{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 18px;margin-bottom:16px;overflow-x:auto}
+.math h3{font-size:16px;margin:14px 0 0}
+.katex-display{margin:.8em 0}
+iframe{width:100%;height:600px;border:0;display:block;background:#fcfcfb}
+.frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:10px}
+code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:14px}
+pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto;line-height:1.5}
+footer{padding:36px 0 60px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+.refs{font-size:14.5px;color:var(--ink2);padding-left:20px}
+.theme{background:none;border:1px solid var(--line);color:var(--ink2);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:13px}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <b>Pneumonia X-ray AI</b>
+  <a href="#results">Results</a><a href="#visuals">Visualisations</a><a href="#math">Math</a>
+  <a href="#interactive">Interactive</a><a href="#limits">Limitations</a><a href="#reproduce">Source code</a>
+  <button class="theme" id="theme" aria-label="Toggle colour theme">◐ theme</button>
+</div></nav>
+
+<div class="wrap">
+<header>
+  <div class="kicker">Medical imaging · explainable &amp; trustworthy AI</div>
+  <h1>Pneumonia from chest X-rays:<br><span class="c">CNN</span> vs <span class="r">ResNet-18</span>, opened up</h1>
+  <p class="lede">Two deep networks detect pneumonia in 5,856 paediatric chest X-rays. Beyond accuracy, this project asks whether the
+    models look at the lungs (Grad-CAM, integrated gradients, occlusion), whether their probabilities can be trusted (temperature
+    scaling, reliability diagrams), whether they know when they are unsure (Monte-Carlo dropout), and how a threshold should be chosen
+    (decision curves), with bootstrap confidence intervals and paired tests throughout.</p>
+  <div class="btns">
+    <a class="btn primary" href="https://pneumonia-xray-ai.streamlit.app">▶ Live demo</a>
+    <a class="btn" href="https://github.com/Engr-HusainNaqvi/Pneumonia-Xray-AI">⌥ Repository</a>
+  </div>
+  <div class="author">Husain Naqvi · Biomedical Engineer · <a href="https://www.linkedin.com/in/hafizhussain">LinkedIn</a> · <a href="https://github.com/Engr-HusainNaqvi">GitHub</a></div>
+  <div class="warn"><b>Research and education only.</b> This is not a medical device and must not be used to diagnose anyone.</div>
+  <div class="hero"><img src="figures/training_evolution.gif" alt="Validation predictions, ROC curve and Grad-CAM maps of the CNN evolving over training epochs" width="1080" height="396"></div>
+</header>
+
+<section id="results">
+  <h2>Results at a glance</h2>
+  <p class="sub">Held-out test set of 624 X-rays (62.5% pneumonia). Means ± s.d. over 3 independent training runs; intervals are 95% stratified bootstrap.</p>
+  <div class="stats">
+    <div class="stat"><div class="v res">0.991</div><div class="l">ResNet-18 test AUC</div></div>
+    <div class="stat"><div class="v cnn">0.982</div><div class="l">CNN test AUC</div></div>
+    <div class="stat"><div class="v">+0.005</div><div class="l">ΔAUC, 95% CI [+0.001, +0.010]</div></div>
+    <div class="stat"><div class="v">0.907</div><div class="l">AUROC of MC-dropout entropy for flagging ResNet-18 errors</div></div>
+  </div>
+  <div class="tbl" style="margin-top:16px">
+  <table>
+    <thead><tr><th>Model</th><th>AUC</th><th>Accuracy</th><th>Sensitivity</th><th>Specificity</th><th>F1</th><th>Params</th><th>CPU training</th></tr></thead>
+    <tbody>
+      <tr><td class="res">ResNet-18 · ImageNet transfer</td><td>0.991 ± 0.001</td><td>0.959 ± 0.006</td><td>0.976 ± 0.017</td><td>0.930 ± 0.016</td><td>0.967 ± 0.005</td><td>11.18 M</td><td>28 min / run</td></tr>
+      <tr><td class="cnn">CNN · from scratch</td><td>0.982 ± 0.005</td><td>0.942 ± 0.007</td><td>0.958 ± 0.007</td><td>0.916 ± 0.009</td><td>0.954 ± 0.006</td><td>0.29 M</td><td>33 min / run</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3 style="margin-top:28px">What the experiments show</h3>
+  <ol class="findings">
+    <li><b>Transfer learning wins, but only by a little.</b> ResNet-18 reaches AUC 0.991 ± 0.001 against 0.982 ± 0.005 for the CNN. The paired bootstrap ΔAUC of +0.005 (95% CI +0.001 to +0.010) excludes zero. At τ = 0.5, however, McNemar's exact test finds no significant difference in errors (14 vs. 10 discordant X-rays, p = 0.54).</li>
+    <li><b>A 38× smaller model comes close.</b> The 294 k-parameter CNN trained from scratch ends within 0.01 AUC of the 11.2 M-parameter ResNet. It is less stable across seeds, though: its AUC s.d. is 8× larger.</li>
+    <li><b>Calibration does not survive a shift in prevalence.</b> Both models are already well calibrated (test ECE 0.02–0.03). Temperature scaling lowers validation NLL but <i>raises</i> test ECE (ResNet-18: 0.029 → 0.048), because validation is 74% pneumonia and test only 62.5%. A probability fitted at one hospital's case mix should not be trusted at another's.</li>
+    <li><b>Uncertainty flags errors.</b> MC-dropout entropy is 0.60 bits on misclassified X-rays versus 0.10 bits on correct ones. Ranking by entropy detects ResNet-18's errors with AUROC 0.91, so deferring the most uncertain cases to a radiologist raises accuracy on the rest.</li>
+    <li><b>The threshold matters as much as the model.</b> Youden's threshold chosen on validation data (τ = 0.013 for ResNet-18) gives 99.2% sensitivity but 85.9% specificity on test. Decision curves show both models beat "treat all" over the whole range of threshold probabilities.</li>
+    <li><b>Look at the saliency maps.</b> On correct pneumonia cases, Grad-CAM and occlusion concentrate on the lung fields. On errors, the maps are often diffuse or centred on the heart and mediastinum, which is exactly the kind of shortcut a clinical audit should check for.</li>
+  </ol>
+</section>
+
+<section id="visuals">
+  <h2>Visualisations</h2>
+  <p class="sub">Every figure is generated by <code>scripts/make_figures.py</code> from the cached results, with one colour-blind-safe palette (classes also carry marker shapes or hatching).</p>
+  <figure><img loading="lazy" src="figures/09_gradcam_gallery.png" alt="Grad-CAM gallery"><figcaption><b>Grad-CAM for correct and incorrect cases.</b> Heat marks the regions whose activations raise the pneumonia logit. Errors (FP, FN) are shown on purpose: they reveal what the models get wrong.</figcaption></figure>
+  <figure><img loading="lazy" src="figures/10_explanations.png" alt="Three explanation methods"><figcaption><b>Three explanation methods for one X-ray.</b> Grad-CAM is coarse (one value per feature-map cell); integrated gradients are pixel-exact and satisfy completeness; occlusion is model-agnostic and directly measures \(\Delta p\).</figcaption></figure>
+  <div class="grid2">
+    <figure><img loading="lazy" src="figures/05_roc_pr.png" alt="ROC and PR curves"><figcaption><b>Discrimination:</b> ROC and precision–recall curves with 95% bootstrap bands.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/08_calibration.png" alt="Calibration"><figcaption><b>Calibration:</b> reliability diagrams before and after temperature scaling, and the fitted temperature.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/11_uncertainty.png" alt="Uncertainty"><figcaption><b>Monte-Carlo dropout:</b> epistemic uncertainty, entropy of correct vs. wrong predictions, and accuracy when uncertain cases are deferred.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/07_thresholds_decision_curve.png" alt="Thresholds and decision curve"><figcaption><b>Thresholds as clinical choices:</b> sensitivity, specificity, PPV and NPV against \(\tau\), the ROC knee, and decision-curve net benefit.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/13_statistics.png" alt="Statistics"><figcaption><b>Is the difference real?</b> Bootstrap distributions, the paired AUC difference and McNemar's exact test.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/06_confusion.png" alt="Confusion matrices"><figcaption><b>Confusion matrices</b> at \(\tau=0.5\) and at the Youden threshold chosen on validation data.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/12_embeddings.png" alt="Embeddings"><figcaption><b>Embedding space:</b> t-SNE of the pooled features; misclassified X-rays are ringed.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/14_filters.png" alt="Filters"><figcaption><b>First-layer filters</b> and their Fourier magnitude: what the networks look for at the pixel level.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/02_fourier_statistics.png" alt="Fourier statistics"><figcaption><b>The images in the frequency domain:</b> intensity histograms and the power-law spectrum \(P(k)\propto k^{-\beta}\).</figcaption></figure>
+    <figure><img loading="lazy" src="figures/03_architecture.png" alt="Architecture"><figcaption><b>Receptive fields and model size:</b> how far each network can "see" at every layer.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/04_training.png" alt="Training"><figcaption><b>Training dynamics</b> over seeds with a one-cycle cosine schedule.</figcaption></figure>
+    <figure><img loading="lazy" src="figures/15_seeds.png" alt="Seeds"><figcaption><b>Seed-to-seed variability</b> of every metric.</figcaption></figure>
+  </div>
+  <figure><img loading="lazy" src="figures/01_dataset.png" alt="Dataset"><figcaption><b>The data:</b> examples, class means and where pneumonia images differ on average.</figcaption></figure>
+</section>
+
+<section id="math">
+  <h2>The mathematics</h2>
+  <p class="sub">What <code>src/pneumo</code> implements.</p>
+  <div class="math">
+    <h3>Model, loss and optimisation</h3>
+    $$p(\text{pneumonia}\mid x)=\sigma(z)=\frac{1}{1+e^{-z}},\qquad z=\mathbf w^\top\,\underbrace{\tfrac{1}{hw}\textstyle\sum_{ij}A_{:,ij}}_{\text{global average pool}}+b$$
+    $$\mathcal L=-\frac1N\sum_i\Big[w\,y_i\log\sigma(z_i)+(1-y_i)\log\big(1-\sigma(z_i)\big)\Big],\qquad w=\frac{n_\text{normal}}{n_\text{pneumonia}}$$
+    $$\eta_t=\eta_{\min}+\tfrac12(\eta_{\max}-\eta_{\min})\big(1+\cos\pi\tau_t\big)\quad\text{(one-cycle cosine, AdamW)},\qquad r_\ell=r_{\ell-1}+(k_\ell-1)\prod_{i<\ell}s_i$$
+  </div>
+  <div class="math">
+    <h3>Explainability</h3>
+    $$\alpha_k=\frac1{hw}\sum_{i,j}\frac{\partial z}{\partial A^k_{ij}},\qquad L_{\text{Grad-CAM}}=\mathrm{ReLU}\Big(\sum_k\alpha_kA^k\Big)$$
+    $$\mathrm{IG}_i(x)=(x_i-x'_i)\int_0^1\frac{\partial z\big(x'+\alpha(x-x')\big)}{\partial x_i}\,d\alpha,\qquad\sum_i\mathrm{IG}_i(x)=z(x)-z(x')$$
+  </div>
+  <div class="math">
+    <h3>Uncertainty and calibration</h3>
+    $$\bar p=\frac1T\sum_{t=1}^Tp_t,\qquad\underbrace{H[\bar p]}_{\text{total}}=\underbrace{\tfrac1T\textstyle\sum_tH[p_t]}_{\text{aleatoric}}+\underbrace{I(y;\boldsymbol\omega\mid x)}_{\text{epistemic}}$$
+    $$T^\star=\arg\min_T-\sum_{i\in\text{val}}\log p\big(y_i\mid\sigma(z_i/T)\big),\qquad\mathrm{ECE}=\sum_b\frac{|B_b|}{N}\big|\mathrm{acc}(B_b)-\mathrm{conf}(B_b)\big|$$
+  </div>
+  <div class="math">
+    <h3>Evaluation and statistics</h3>
+    $$\mathrm{AUC}=P\big(s(x^+)>s(x^-)\big),\qquad J=\text{sens}+\text{spec}-1,\qquad \mathrm{NB}(p_t)=\frac{TP}{N}-\frac{FP}{N}\cdot\frac{p_t}{1-p_t}$$
+    $$\widehat{\Delta}^{*b}=\mathrm{AUC}_{\text{ResNet}}(\mathcal D^{*b})-\mathrm{AUC}_{\text{CNN}}(\mathcal D^{*b}),\qquad b\sim\mathrm{Binomial}\big(b+c,\tfrac12\big)\ \text{under }H_0\ \text{(McNemar)}$$
+    $$P(k)=\big\langle|\mathcal F\{x\}(\mathbf k)|^2\big\rangle_{\|\mathbf k\|=k}\propto k^{-\beta}$$
+  </div>
+</section>
+
+<section id="interactive">
+  <h2>Interactive</h2>
+  <p class="sub">To upload your own X-ray and see Grad-CAM and uncertainty live, open the <a href="https://pneumonia-xray-ai.streamlit.app">Streamlit demo</a>.</p>
+  <div class="frame"><iframe loading="lazy" src="interactive/threshold_explorer.html" title="Threshold explorer"></iframe></div>
+  <p class="sub">Drag the slider: the operating point moves along each ROC curve; hover for the confusion counts.</p>
+  <div class="frame"><iframe loading="lazy" src="interactive/gradcam_browser.html" title="Grad-CAM browser" style="height:640px"></iframe></div>
+  <p class="sub">Browse ResNet-18 Grad-CAM maps for correct and incorrect test cases.</p>
+  <div class="frame"><iframe loading="lazy" src="interactive/embedding_3d.html" title="3-D embedding"></iframe></div>
+  <p class="sub">The 512-d ResNet-18 features of all test X-rays, projected onto three principal components (drag to rotate).</p>
+</section>
+
+<section id="limits">
+  <h2>Limitations</h2>
+  <ul class="refs" style="font-size:15.5px">
+    <li>All images are paediatric (ages 1–5) from a single centre (Guangzhou Women and Children's Medical Center); performance on adults or other hospitals and scanners is unknown and likely lower.</li>
+    <li>Images are down-sampled to 128 × 128 px, which discards fine detail a radiologist would use.</li>
+    <li>The MedMNIST test split is the original Kermany test set, whose class balance differs from the training data; patient overlap between splits cannot be fully ruled out from the public release.</li>
+    <li>Saliency maps show what the model used, not what is clinically correct, and can highlight shortcuts such as text markers or patient positioning.</li>
+    <li>MC dropout gives an approximate, not calibrated, measure of epistemic uncertainty.</li>
+  </ul>
+</section>
+
+<section id="reproduce">
+  <h2>Source code</h2>
+  <p>The full implementation, notebook and trained weights are kept in a private repository. Access is available on request to professors, reviewers and collaborators via <a href="https://www.linkedin.com/in/hafizhussain">LinkedIn</a> or <a href="https://github.com/Engr-HusainNaqvi">GitHub</a>.</p>
+  <p><b>© 2026 Husain Naqvi. All rights reserved.</b> No part of this work may be copied or reused without written permission.</p>
+  <h3>References</h3>
+  <ol class="refs">
+    <li>Kermany et al. (2018). Identifying medical diagnoses and treatable diseases by image-based deep learning. <i>Cell</i> 172(5).</li>
+    <li>Yang et al. (2023). MedMNIST v2: a large-scale lightweight benchmark for 2D and 3D biomedical image classification. <i>Scientific Data</i> 10.</li>
+    <li>He et al. (2016). Deep residual learning for image recognition. <i>CVPR</i>.</li>
+    <li>Selvaraju et al. (2017). Grad-CAM: visual explanations from deep networks via gradient-based localization. <i>ICCV</i>.</li>
+    <li>Sundararajan, Taly &amp; Yan (2017). Axiomatic attribution for deep networks. <i>ICML</i>.</li>
+    <li>Zeiler &amp; Fergus (2014). Visualizing and understanding convolutional networks. <i>ECCV</i>.</li>
+    <li>Gal &amp; Ghahramani (2016). Dropout as a Bayesian approximation. <i>ICML</i>.</li>
+    <li>Guo et al. (2017). On calibration of modern neural networks. <i>ICML</i>.</li>
+    <li>Vickers &amp; Elkin (2006). Decision curve analysis. <i>Medical Decision Making</i> 26(6).</li>
+    <li>Smith &amp; Topin (2019). Super-convergence: very fast training of neural networks using large learning rates. <i>SPIE</i>.</li>
+    <li>Rajpurkar et al. (2017). CheXNet: radiologist-level pneumonia detection on chest X-rays with deep learning. <i>arXiv:1711.05225</i>.</li>
+  </ol>
+</section>
+</div>
+<footer><div class="wrap">© 2026 Husain Naqvi · All rights reserved · Data: PneumoniaMNIST (CC BY 4.0), derived from Kermany et al. (2018) · Built with PyTorch, Matplotlib, Plotly and Streamlit.</div></footer>
+<script>
+(function(){
+  var root=document.documentElement,b=document.getElementById('theme'),k='pneumo-theme';
+  try{var s=localStorage.getItem(k); if(s) root.setAttribute('data-theme',s);}catch(e){}
+  b.addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);
+    var n=dark?'light':'dark'; root.setAttribute('data-theme',n);
+    try{localStorage.setItem(k,n);}catch(e){}
+  });
+})();
+</script>
+</body>
+</html>
